@@ -3,7 +3,7 @@ schema_version: 1
 context:
   version: "2.42.4"
 
-package:
+recipe:
   name: libuuid
   version: ${{ version }}
 
@@ -15,15 +15,19 @@ source:
     - darwin_libtoolize.patch
 
 build:
-  number: 0
+  number: 1
   skip: win
 
-requirements:
-  build:
-    - ${{ compiler('c') }}
-    - ${{ stdlib('c') }}
-    - if: unix
-      then:
+outputs:
+  # Build once (shared + static), then split the installed files into two packages.
+  - staging:
+      name: libuuid-build
+    build:
+      script: build.sh
+    requirements:
+      build:
+        - ${{ compiler('c') }}
+        - ${{ stdlib('c') }}
         - python 3.12.*
         - autoconf
         - automake
@@ -35,13 +39,42 @@ requirements:
         - gnuconfig
         - make
 
-  run_exports:
-    - ${{ pin_subpackage('libuuid') }}
+  - package:
+      name: libuuid
+    inherit: libuuid-build
+    build:
+      files:
+        - include/uuid/
+        - lib/libuuid.so*
+        - lib/libuuid*.dylib
+        - lib/pkgconfig/uuid.pc
+    requirements:
+      run_exports:
+        - ${{ pin_subpackage('libuuid') }}
+    tests:
+      - package_contents:
+          include:
+            - uuid/uuid.h
+          lib:
+            - uuid
+          files:
+            not_exists:
+              - lib/libuuid.a
 
-tests:
-  - package_contents:
-      lib:
-        - uuid
+  - package:
+      name: libuuid-static
+    inherit: libuuid-build
+    build:
+      files:
+        - lib/libuuid.a
+    requirements:
+      run:
+        # headers and pkg-config file live in libuuid
+        - ${{ pin_subpackage('libuuid', exact=True) }}
+    tests:
+      - package_contents:
+          files:
+            - lib/libuuid.a
 
 about:
   license: BSD-3-Clause
@@ -50,6 +83,7 @@ about:
   homepage: http://sourceforge.net/projects/libuuid/
 
 extra:
+  feedstock-name: libuuid
   recipe-maintainers:
     - hmaarrfk
     - ocefpaf
